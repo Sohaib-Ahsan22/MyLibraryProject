@@ -1,19 +1,15 @@
-// ==========================================
-// THESE MACROS MUST BE AT THE TOP
-// ==========================================
 #define NOMINMAX
 #define _SILENCE_ALL_CXX20_DEPRECATION_WARNINGS
 #define _CRT_SECURE_NO_WARNINGS
 
 #include <iostream>
 #include <string>
-#include <pqxx/pqxx> // Database Library
+#include <pqxx/pqxx>
 
 using namespace std;
 
 // DATABASE CONNECTION
-// Apne password se replace karen agar different hai
-string conn_string = "dbname=lib_managment user=postgres password=N@ust123 hostaddr=127.0.0.1 port=5432";
+string conn_string = "dbname=xyz user=postgres password=password hostaddr=127.0.0.1 port=5432";
 
 // ---------------------------------------------------
 // 1. ADD BOOK
@@ -169,6 +165,38 @@ void displayBooks() {
     catch (const std::exception& e) { cerr << e.what() << endl; }
 }
 
+// ---------------------------------------------------
+// 5. REMOVE BOOK (Safely)
+// ---------------------------------------------------
+void removeBook(int id) {
+    try {
+        pqxx::connection C(conn_string);
+        pqxx::work W(C);
+
+        // Step 1: Check if book exists
+        pqxx::result R = W.exec("SELECT Title FROM Books WHERE BookID = " + to_string(id));
+        if (R.size() == 0) {
+            cout << ">> Error: Book ID not found.\n";
+            return;
+        }
+        string title = R[0]["Title"].c_str();
+
+        // Step 2: Delete dependencies (Foreign Keys) first
+        W.exec("DELETE FROM ActiveBorrows WHERE BookID = " + to_string(id));
+        W.exec("DELETE FROM Waitlist WHERE BookID = " + to_string(id));
+
+        // Step 3: Now delete the actual book
+        W.exec("DELETE FROM Books WHERE BookID = " + to_string(id));
+
+        W.commit();
+        cout << ">> Success: '" << title << "' (ID: " << id << ") and all its records have been deleted.\n";
+
+    }
+    catch (const std::exception& e) {
+        cerr << "Error removing book: " << e.what() << endl;
+    }
+}
+
 void searchBook(string title) {
     try {
         pqxx::connection C(conn_string);
@@ -201,7 +229,8 @@ int main() {
     cout << "\n\n**** Library Management System (Database Connected) ****\n" << endl;
 
     do {
-        cout << "\n1. Add Book\n2. Borrow Book\n3. Return Book\n4. Search Book\n5. Display All\n6. Exit\nSelect: ";
+        // Option 7 add kia hai
+        cout << "\n1. Add Book\n2. Borrow Book\n3. Return Book\n4. Search Book\n5. Display All\n6. Remove Book\n7. Exit\nSelect: ";
         cin >> option;
 
         switch (option) {
@@ -228,10 +257,27 @@ int main() {
             break;
         }
         case 5: displayBooks(); break;
-        case 6: cout << "Exiting...\n"; break;
+
+            // NEW CASE ADDED HERE
+        case 6: {
+            int id; cout << "Enter Book ID to Remove: "; cin >> id;
+            // Confirmation (Safety Check)
+            char confirm;
+            cout << "Are you sure? This will delete borrowing history too (y/n): ";
+            cin >> confirm;
+            if (confirm == 'y' || confirm == 'Y') {
+                removeBook(id);
+            }
+            else {
+                cout << ">> Operation Cancelled.\n";
+            }
+            break;
+        }
+
+        case 7: cout << "Exiting...\n"; break;
         default: cout << "Invalid Option.\n";
         }
-    } while (option != 6);
+    } while (option != 7);
 
     return 0;
 }
